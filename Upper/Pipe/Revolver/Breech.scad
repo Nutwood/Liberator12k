@@ -28,7 +28,7 @@ use <../Pipe Upper.scad>;
 
 
 DEFAULT_SPINDLE_OFFSET=1.355;
-DEFAULT_CHARGER_TRAVEL = (LowerMaxX()+SearRadius()+0.5);
+DEFAULT_CHARGER_TRAVEL = 2.65;//(LowerMaxX()+SearRadius()+0.5);
 DEFAULT_CHARGING_ROD_LENGTH = LowerMaxX()+SearRadius()+DEFAULT_CHARGER_TRAVEL;
 
 // Measured: Vitamins
@@ -40,7 +40,7 @@ function BreechBoltRearExtension() = 3.5;
 
 // Settings: Walls
 function WallBreechBolt() = 0.1875;
-function WallChargingPin() = 1/8;
+function WallChargingPin() = 1/4;
 
 // Settings: Positions
 function BreechFrontX() = 0;
@@ -51,9 +51,7 @@ function BreechBolt() = Spec_BoltOneHalf();
 function BreechBolt() = Spec_BoltThreeEighths();
 function BreechBolt() = Spec_BoltFiveSixteenths();
 function ChargingRod() = Spec_RodOneQuarterInch();
-function ChargingPin() = Spec_RodThreeThirtysecondInch();
-function DisconnectorRod() = Spec_RodOneQuarterInch();
-function DisconnectorPivotPin() = Spec_RodThreeThirtysecondInch();
+function PinSpec() = Spec_RodThreeThirtysecondInch();
 function SquareRodFixingBolt() = Spec_BoltM3();
 
 // Calculated: Positions
@@ -75,23 +73,28 @@ function BreechTopZ() = BreechBoltOffsetZ()
 function FiringPinMinX() = BreechRearX()-FiringPinBodyLength();
 
 
-function ChargingRodOffset() = ReceiverOR()+RodDiameter(ChargingRod())+0.0625;
-function ChargingRodOffset() = 1.1875+RodDiameter(ChargingRod());
-function ChargingPinX() = BreechRearX()-0.25;
+function ChargingRodOffset() = ReceiverOR()+RodRadius(ChargingRod())+0.0625;
+function ChargingPinX() = BreechRearX()-0.125;
 function ChargingRodMinX() = ChargingPinX()-WallChargingPin();
 
-function DisconnectorPivotOffsetX() = 0.5;
-function DisconnectorPivotX() = BreechRearX()-DisconnectorPivotOffsetX();
-function DisconnectorPivotZ() =ChargingRodOffset()-(RodDiameter(ChargingRod())*2);
+function WallChargingToggle() = 0.125;
+function ChargingToggleOffsetZ() = ChargingRodOffset()-(RodRadius(ChargingRod())*2);
+function ChargingToggleMaxX() = BreechRearX()-0.375;
+function ChargingToggleMinX() = FiringPinMinX()-LinearHammerTravel()+WallChargingToggle()-0.25;
+function ChargingToggleTotalLength() = ChargingToggleMaxX()-ChargingToggleMinX();
+function ChargingToggleFrontLinkLength() = 0.75;
+function ChargingToggleRearLinkLength() = 1.0;
+function ChargerLinkWidth() = 1/8;
+function ChargerLinkHeight() = 1/2;
 
-function DisconnectorFactor() = SubAnimate(ANIMATION_STEP_CHARGE, start=0.36, end=0.75)
-                              - SubAnimate(ANIMATION_STEP_CHARGER_RESET, start=0.9);
+echo ("ChargingToggleTotalLength", ChargingToggleTotalLength());
 
-function ChargingToggleFactor() = SubAnimate(ANIMATION_STEP_CHARGE, start=0.36, end=0.9)
-                                - SubAnimate(ANIMATION_STEP_CHARGER_RESET, start=0.05, end=0.74);
+
+function ChargingToggleFactor() = SubAnimate(ANIMATION_STEP_CHARGE, start=0.0, end=0.2)
+                                - SubAnimate(ANIMATION_STEP_CHARGER_RESET, start=0.90, end=1);
 
 function HammerFactor() = Animate(ANIMATION_STEP_FIRE)
-                        - SubAnimate(ANIMATION_STEP_CHARGE, start=0.0, end=0.36);
+                        - SubAnimate(ANIMATION_STEP_CHARGE, start=0.0, end=0.2);
 
 // Shorthand: Measurements
 function BreechBoltRadius(clearance=false)
@@ -105,24 +108,22 @@ module ChargingRod(clearance=RodClearanceLoose(),
                    bolt=true, actuator=true,
                    travel=DEFAULT_CHARGER_TRAVEL,
                    animationFactor=0,
-                   toggleAnimationFactor=ChargingToggleFactor(),
                    cutter=false, debug=false) {
 
   translate([-travel*animationFactor,0,0]) {
     
     if (!cutter) {
-      ChargingToggle(animationFactor=toggleAnimationFactor);
       
       color("Silver")
       translate([ChargingPinX(), 0, ChargingRodOffset()])
       hull() {
         rotate([90,0,0])
-        Rod(ChargingPin(), length=0.76, center=true, clearance=cutter?clearance:undef);
+        Rod(PinSpec(), length=0.76, center=true, clearance=cutter?clearance:undef);
 
         if (cutter) {
           translate([-travel,0,0])
           rotate([90,0,0])
-          Rod(ChargingPin(), length=0.76, center=true, clearance=cutter?clearance:undef);
+          Rod(PinSpec(), length=0.76, center=true, clearance=cutter?clearance:undef);
         }
       }
     }
@@ -159,41 +160,91 @@ module ChargingRod(clearance=RodClearanceLoose(),
   }
 }
 
-module ChargingToggle(angle=-110, animationFactor=ChargingToggleFactor(), length=ChargingRodOffset()-RodRadius(ChargingRod()), backsetLength=0.125) {
-    for(M = [0,1]) mirror([0,M,0])
-    translate([ChargingPinX(), RodDiameter(ChargingRod()), ChargingRodOffset()])
-    rotate([0,-90-30+(angle*animationFactor),0]) {
-      color("Yellow")
-      translate([0,0,-backsetLength])
-      SquareRod(ChargingRod(),
-                length=length);
+module ChargingToggle(angle=70, toggleAngle=-10, factor=ChargingToggleFactor(),
+                      cutter=false, $fn=20) {
   
-      translate([0, 0.13, 0.475])
-      rotate([90,0,0])
-      Rod(DisconnectorPivotPin(), length=0.76, center=false);
-    }
+  /*
   
-}
-
-module Disconnector(angle=10, animationFactor=1) {
-  
-  backsetLength = DisconnectorPivotOffsetX()-(1/16);
-  extensionLength = (LowerMaxX()+DisconnectorPivotX()+backsetLength+(0.25)) * cos(angle);
-  length = extensionLength+backsetLength;
+function WallChargingToggle() = 0.25;
+function ChargingToggleMaxX() = BreechRearX()-WallChargingToggle();
+function ChargingToggleMinX() = FiringPinMinX()-LinearHammerTravel()-0.25+WallChargingToggle();
+function ChargingToggleTotalLength() = ChargingToggleMaxX()-ChargingToggleMinX();
+function ChargingToggleLinkLength() = ChargingToggleTotalLength()/2;
+echo ("ChargingToggleTotalLength", ChargingToggleTotalLength());
+*/
   
   
-  translate([DisconnectorPivotX(), 0, DisconnectorPivotZ()])
-  rotate([90,0,0])
-  Rod(DisconnectorPivotPin(), length=1.25, center=true);
-  
-  color("LimeGreen")
-  translate([DisconnectorPivotX(), 0, DisconnectorPivotZ()]) {
-    rotate([0,-90-(angle*animationFactor),0])
-    translate([0,0,-backsetLength])
-    SquareRod(DisconnectorRod(),
-              length=length);
+  translate([ChargingToggleMaxX(),0,ChargingToggleOffsetZ()])
+  rotate([0,0,0]) {
     
+    
+    rotate([0,(angle)*(1-factor),0])
+    for (X = [0, ChargingToggleFrontLinkLength()]) rotate([0,toggleAngle,0]) translate([-X,0,0])
+    rotate([90,0,0])
+    Rod(PinSpec(), length=0.76, center=true, clearance=cutter?RodClearanceLoose():undef);
+    
+    // Front link
+    color("Yellow")
+    rotate([0,(angle)*(1-factor),0])
+    rotate([0,toggleAngle,0])      
+    rotate([90,0,0])
+    render()
+    difference() {
+      linear_extrude(height=0.25, center=true) {
+        
+        // Front pivot point
+        *circle(r=WallChargingToggle());
+        
+        // Linkage bar
+        translate([0.125,-RodRadius(ChargingRod())])
+        mirror([1,0])
+        square([ChargingToggleFrontLinkLength()+0.25, RodDiameter(ChargingRod())]);
+        
+        // Reset Trip
+        *rotate(angle+toggleAngle-20)
+        polygon([[-WallChargingToggle(),0],
+                 [WallChargingToggle(),0],
+                 [WallChargingToggle(),0.4375],
+                 //[WallChargingToggle()/2,0.625]
+        ]);
+        
+        // Knee pivot
+        *translate([-ChargingToggleFrontLinkLength(),0])
+        circle(r=WallChargingToggle());
+      }
+    }
+    
+    
+    // Rear link
+    rotate([0,(angle)*(1-factor),0])
+    rotate([0,toggleAngle,0])
+    translate([-ChargingToggleFrontLinkLength(),0,0])
+    rotate([90,0,0])
+    rotate((-angle*2)*(factor))
+    rotate((angle+toggleAngle)*2)
+    color("Green") render()
+    linear_extrude(height=0.26, center=true)      
+    union() {
+      
+      // Knee pivot
+      *circle(r=WallChargingToggle());
+      
+      translate([-ChargingToggleRearLinkLength(),0]) {
+        
+        // Linkage bar
+        translate([-0.125,-RodRadius(ChargingRod())])
+        square([ChargingToggleRearLinkLength()+0.25, RodDiameter(ChargingRod())]);
+        
+        //rotate(-angle-toggleAngle)
+        *translate([0,WallChargingToggle()*2])
+        circle(r=WallChargingToggle());
+        
+        // Rear pivot point
+        circle(r=0.125);
+      }
+    }
   }
+  
 }
 
 module BreechFiringPinAssembly(template=false,
@@ -301,21 +352,19 @@ module FrameSupportRear(debug=false, alpha=1) {
 module BreechAssembly(breechBoltLength=abs(BreechRearX())+BreechBoltRearExtension(),
                       breechBoltAlpha=0.3,
                       showBreech=true,
-                      chargingRodAnimationFactor=0,
+                      chargingRodAnimationFactor=Animate(ANIMATION_STEP_CHARGE)
+                             - Animate(ANIMATION_STEP_CHARGER_RESET),
                       chargingRodLength=DEFAULT_CHARGING_ROD_LENGTH,
                       chargingRodTravel=DEFAULT_CHARGER_TRAVEL,
                       hammerTravelFactor=HammerFactor(),
                       debug=false) {
-  BreechFiringPinAssembly(breechBoltLength=breechBoltLength, debug=debug);
-
-  chargingRodAnimationFactor = Animate(ANIMATION_STEP_CHARGE)
-                             - Animate(ANIMATION_STEP_CHARGER_RESET);
+  BreechFiringPinAssembly(breechBoltLength=breechBoltLength, debug=false);
 
   ChargingRod(length=chargingRodLength,
               travel=chargingRodTravel,
               animationFactor=chargingRodAnimationFactor, cutter=false);
 
-  Disconnector(animationFactor=DisconnectorFactor());
+  *ChargingToggle();
 
   translate([BreechRearX()-LowerMaxX(),0,0])
   FrameBolts(debug=debug);
@@ -337,15 +386,15 @@ module BreechAssembly(breechBoltLength=abs(BreechRearX())+BreechBoltRearExtensio
 
 BreechAssembly(debug=true);
 
-*translate([BreechRearX(),0,0])
+translate([BreechRearX(),0,0])
 PipeUpperAssembly(pipeAlpha=0.3,
                   receiverLength=12,
                   chargingHandle=false,
                   frameUpper=false,
-                  stock=true, tailcap=false,
+                  stock=true, tailcap=false, lower=true,
                   debug=false);
-
-//$t=AnimationDebug(ANIMATION_STEP_CHARGE, T=$t);
+$t=AnimationDebug(ANIMATION_STEP_CHARGE, T=$t, start=0, end=0.5);
+//$t=AnimationDebug(ANIMATION_STEP_CHARGER_RESET, T=$t, start=0.9);
 
 *!scale(25.4)
 for (M = [0,1]) mirror([0,M,0])
